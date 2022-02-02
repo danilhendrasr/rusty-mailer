@@ -1,4 +1,6 @@
+use sqlx::{Connection, PgConnection};
 use std::net::TcpListener;
+use zero2prod::configuration::get_configuration;
 
 #[tokio::test]
 async fn health_check_works() {
@@ -18,6 +20,11 @@ async fn health_check_works() {
 #[tokio::test]
 async fn subscribe_returns_200_if_data_valid() {
     let app_address = spawn_app();
+    let configuration = get_configuration().expect("Failed to get configurations");
+    let connection_string = configuration.database.connection_string();
+    let mut connection = PgConnection::connect(&connection_string)
+        .await
+        .expect("Failed to connect to the database");
     let client = reqwest::Client::new();
 
     // Simulate data from a url-encoded form
@@ -31,6 +38,16 @@ async fn subscribe_returns_200_if_data_valid() {
         .expect("Failed to execute request.");
 
     assert_eq!(200, response.status().as_u16());
+
+    // This might look like an error in VSCode, but it's not
+    // You need to set a DATABASE_URL key to rust-analyzer.runnableEnv setting
+    let saved = sqlx::query!("SELECT email, name FROM subscriptions")
+        .fetch_one(&mut connection)
+        .await
+        .expect("Failed to fetch saved subscription.");
+
+    assert_eq!(saved.email, "danilhendrasr@gmail.com");
+    assert_eq!(saved.name, "danil hendra");
 }
 
 #[tokio::test]

@@ -59,7 +59,6 @@ jobs:
             --force
             --version=${{ env.SQLX_VERSION }}
             --features=${{ env.SQLX_FEATURES }}
-            --no-default-features
             --locked
 
       - name: Migrate database
@@ -139,7 +138,6 @@ jobs:
             --force
             --version=${{ env.SQLX_VERSION }}
             --features=${{ env.SQLX_FEATURES }}
-            --no-default-features
             --locked
 
       - name: Migrate database
@@ -204,7 +202,6 @@ jobs:
             --force
             --version=${{ env.SQLX_VERSION }}
             --features=${{ env.SQLX_FEATURES }}
-            --no-default-features
             --locked
 
       - name: Migrate database

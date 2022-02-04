@@ -1,14 +1,15 @@
-use sqlx::{Connection, PgConnection};
+use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::TcpListener;
-use zero2prod::configuration::get_configuration;
+use uuid::Uuid;
+use zero2prod::configuration::{get_configuration, DBSettings};
 
 #[tokio::test]
 async fn health_check_works() {
-    let app_address = spawn_app();
+    let app = spawn_app().await;
     let client = reqwest::Client::new();
 
     let response = client
-        .get(format!("{}/health-check", app_address))
+        .get(format!("{}/health-check", app.address))
         .send()
         .await
         .expect("Failed to execute request.");
@@ -19,18 +20,13 @@ async fn health_check_works() {
 
 #[tokio::test]
 async fn subscribe_returns_200_if_data_valid() {
-    let app_address = spawn_app();
-    let configuration = get_configuration().expect("Failed to get configurations");
-    let connection_string = configuration.database.connection_string();
-    let mut connection = PgConnection::connect(&connection_string)
-        .await
-        .expect("Failed to connect to the database");
+    let app = spawn_app().await;
     let client = reqwest::Client::new();
 
     // Simulate data from a url-encoded form
-    let body = "name=danil%hendra&email=danilhendrasr%40gmail.com";
+    let body = "name=danil%20hendra&email=danilhendrasr%40gmail.com";
     let response = client
-        .post(format!("{}/subscriptions", app_address))
+        .post(format!("{}/subscriptions", app.address))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(body)
         .send()
@@ -42,7 +38,7 @@ async fn subscribe_returns_200_if_data_valid() {
     // This might look like an error in VSCode, but it's not
     // You need to set a DATABASE_URL key to rust-analyzer.runnableEnv setting
     let saved = sqlx::query!("SELECT email, name FROM subscriptions")
-        .fetch_one(&mut connection)
+        .fetch_one(&app.db_pool)
         .await
         .expect("Failed to fetch saved subscription.");
 
@@ -52,7 +48,7 @@ async fn subscribe_returns_200_if_data_valid() {
 
 #[tokio::test]
 async fn subscribe_returns_400_if_data_invalid() {
-    let app_address = spawn_app();
+    let app = spawn_app().await;
     let client = reqwest::Client::new();
     let test_cases = vec![
         ("name=danil%20hendra", "missing email"),
@@ -62,7 +58,7 @@ async fn subscribe_returns_400_if_data_invalid() {
 
     for (body, error_message) in test_cases {
         let response = client
-            .post(format!("{}/subscriptions", app_address))
+            .post(format!("{}/subscriptions", app.address))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
             .send()
@@ -78,12 +74,49 @@ async fn subscribe_returns_400_if_data_invalid() {
     }
 }
 
-fn spawn_app() -> String {
+pub struct TestApp {
+    address: String,
+    db_pool: PgPool,
+}
+
+async fn spawn_app() -> TestApp {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
     let our_port = listener.local_addr().unwrap().port();
+    let address = format!("http://127.0.0.1:{}", our_port);
 
-    let server = zero2prod::run(listener).expect("Failed to bind to address");
+    let mut configuration = get_configuration().expect("Failed to get configurations");
+    configuration.database.db_name = Uuid::new_v4().to_string();
+    let connection_pool = configure_db(&configuration.database).await;
+
+    let server =
+        zero2prod::run(listener, connection_pool.clone()).expect("Failed to bind to address");
     let _ = tokio::spawn(server);
 
-    format!("http://127.0.0.1:{}", our_port)
+    TestApp {
+        address,
+        db_pool: connection_pool,
+    }
+}
+
+pub async fn configure_db(settings: &DBSettings) -> PgPool {
+    println!("tayoy {:?}", &settings.connection_string_wo_db());
+    let mut connection = PgConnection::connect(&settings.connection_string_wo_db())
+        .await
+        .expect("Failed connecting to the database");
+
+    connection
+        .execute(format!(r#"CREATE DATABASE "{}";"#, settings.db_name).as_str())
+        .await
+        .expect(format!("Failed to create {} database", settings.db_name).as_str());
+
+    let connection_pool = PgPool::connect(&settings.connection_string())
+        .await
+        .expect(format!("Failed to connect to database {}", settings.db_name).as_str());
+
+    sqlx::migrate!("./migrations")
+        .run(&connection_pool)
+        .await
+        .expect("Failed to migrate the database");
+
+    connection_pool
 }

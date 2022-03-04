@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use tracing_actix_web::TracingLogger;
 
 pub mod configuration;
+pub mod domain;
 pub mod routes;
 pub mod telemetry;
 

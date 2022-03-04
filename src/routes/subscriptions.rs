@@ -1,8 +1,9 @@
 use actix_web::{web, HttpResponse, Responder};
 use chrono::Utc;
 use sqlx::PgPool;
-use unicode_segmentation::UnicodeSegmentation;
 use uuid::Uuid;
+
+use crate::domain::{NewSubscriber, SubscriberName};
 
 #[derive(serde::Deserialize)]
 pub struct SubscriptionData {
@@ -22,20 +23,29 @@ pub async fn subscribe(
     data: web::Form<SubscriptionData>,
     db_pool: web::Data<PgPool>,
 ) -> impl Responder {
-    if is_name_valid(&data.name) {
-        return HttpResponse::BadRequest().finish();
-    }
+    let name = match SubscriberName::parse(data.0.name) {
+        Ok(valid_name) => valid_name,
+        Err(_) => return HttpResponse::BadRequest().finish(),
+    };
 
-    match insert_subscriber(&db_pool, &data).await {
+    let new_subscriber = NewSubscriber {
+        email: data.0.email,
+        name,
+    };
+
+    match insert_subscriber(&db_pool, &new_subscriber).await {
         Ok(_) => HttpResponse::Ok().finish(),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
 
-#[tracing::instrument(name = "Saving new subscriber details to the db", skip(db_pool, data))]
+#[tracing::instrument(
+    name = "Saving new subscriber details to the db",
+    skip(db_pool, new_subscriber)
+)]
 pub async fn insert_subscriber(
     db_pool: &PgPool,
-    data: &SubscriptionData,
+    new_subscriber: &NewSubscriber,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
@@ -43,8 +53,8 @@ pub async fn insert_subscriber(
     VALUES ($1, $2, $3, $4)
     "#,
         Uuid::new_v4(),
-        data.email,
-        data.name,
+        new_subscriber.email,
+        new_subscriber.name.as_ref(),
         Utc::now()
     )
     .execute(db_pool)
@@ -55,14 +65,4 @@ pub async fn insert_subscriber(
     })?;
 
     Ok(())
-}
-
-pub fn is_name_valid(name: &str) -> bool {
-    let is_empty_or_whitespace = name.trim().is_empty();
-    let is_too_long = name.graphemes(true).count() > 256;
-
-    let forbidden_chars = ['/', '(', ')', '"', '<', '>', '\\', '{', '}'];
-    let contains_forbidden_char = name.chars().any(|c| forbidden_chars.contains(&c));
-
-    !(is_empty_or_whitespace || is_too_long || contains_forbidden_char)
 }

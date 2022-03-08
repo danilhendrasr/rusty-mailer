@@ -48,3 +48,4 @@ features = [
 fake = "~2.3"
 quickcheck = "0.9"
 quickcheck_macros = "0.9"
+wiremock = "0.5.11"

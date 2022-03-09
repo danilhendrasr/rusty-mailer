@@ -9,12 +9,12 @@ pub struct EmailClient {
 }
 
 #[derive(serde::Serialize)]
-struct SendEmailRequestPayload {
-    from: String,
-    to: String,
-    subject: String,
-    html_body: String,
-    text_body: String,
+struct SendEmailRequestPayload<'a> {
+    from: &'a str,
+    to: &'a str,
+    subject: &'a str,
+    html_body: &'a str,
+    text_body: &'a str,
 }
 
 impl EmailClient {
@@ -40,11 +40,11 @@ impl EmailClient {
     ) -> Result<(), reqwest::Error> {
         let url = format!("{}/email", self.base_url);
         let req_body = SendEmailRequestPayload {
-            from: self.sender.as_ref().to_owned(),
-            to: recipient.as_ref().to_owned(),
-            subject: subject.to_owned(),
-            html_body: html_content.to_owned(),
-            text_body: text_content.to_owned(),
+            from: self.sender.as_ref(),
+            to: recipient.as_ref(),
+            subject,
+            html_body: html_content,
+            text_body: text_content,
         };
 
         self.http_client

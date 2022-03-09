@@ -67,15 +67,40 @@ mod tests {
     use fake::faker::internet::en::SafeEmail;
     use fake::faker::lorem::en::{Paragraph, Sentence};
     use fake::{Fake, Faker};
-    use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+    use wiremock::{
+        matchers::{header, header_exists, method, path},
+        Mock, MockServer, Request, ResponseTemplate,
+    };
+
+    struct SendEmailBodyMatcher;
+
+    impl wiremock::Match for SendEmailBodyMatcher {
+        fn matches(&self, request: &Request) -> bool {
+            let result: Result<serde_json::Value, _> = serde_json::from_slice(&request.body);
+
+            if let Ok(body) = result {
+                body.get("from").is_some()
+                    && body.get("to").is_some()
+                    && body.get("subject").is_some()
+                    && body.get("html_body").is_some()
+                    && body.get("text_body").is_some()
+            } else {
+                false
+            }
+        }
+    }
 
     #[tokio::test]
-    async fn send_email_fires_a_request_to_base_url() {
+    async fn send_email_actually_sends_the_expected_request() {
         let mock_server = MockServer::start().await;
         let sender = SubscriberEmail::parse(SafeEmail().fake()).unwrap();
         let email_client = EmailClient::new(mock_server.uri(), sender, Secret::new(Faker.fake()));
 
-        Mock::given(any())
+        Mock::given(header_exists("X-Postmark-Server-Token"))
+            .and(header("Content-Type", "application/json"))
+            .and(method("POST"))
+            .and(path("/email"))
+            .and(SendEmailBodyMatcher)
             .respond_with(ResponseTemplate::new(200))
             .expect(1)
             .mount(&mock_server)

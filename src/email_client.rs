@@ -23,9 +23,10 @@ impl EmailClient {
         base_url: String,
         sender: SubscriberEmail,
         authorization_token: Secret<String>,
+        duration: time::Duration,
     ) -> Self {
         let reqwest_client = reqwest::Client::builder()
-            .timeout(time::Duration::from_secs(10))
+            .timeout(duration)
             .build()
             .unwrap();
 
@@ -111,7 +112,12 @@ mod tests {
     }
 
     fn email_client(base_url: String) -> EmailClient {
-        EmailClient::new(base_url, email(), Secret::new(Faker.fake()))
+        EmailClient::new(
+            base_url,
+            email(),
+            Secret::new(Faker.fake()),
+            time::Duration::from_millis(200),
+        )
     }
 
     #[tokio::test]

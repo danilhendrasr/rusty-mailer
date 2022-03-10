@@ -136,14 +136,16 @@ async fn spawn_app() -> TestApp {
     let connection_pool = configure_db(&configuration.database).await;
 
     // Setup email client, we're using singleton to utilize reqwest's HTTP connection pooling
-    let sender_email = configuration
+    let email_client_sender_email = configuration
         .email_client
         .sender()
-        .expect("Invalid sender email address.");
+        .expect("Invalid sender email address for email client.");
+    let email_client_timeout_duration = configuration.email_client.timeout();
     let email_client = EmailClient::new(
         configuration.email_client.base_url,
-        sender_email,
+        email_client_sender_email,
         configuration.email_client.authorization_token,
+        email_client_timeout_duration,
     );
 
     let server = zero2prod::run(listener, connection_pool.clone(), email_client)

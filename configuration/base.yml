@@ -10,3 +10,4 @@ email_client:
   base_url: localhost
   sender_email: 19081010016@student.upnjatim.ac.id
   authorization_token: POSTMARK_API_TEST
+  timeout_milliseconds: 3000

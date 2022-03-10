@@ -18,14 +18,16 @@ async fn main() -> std::io::Result<()> {
         .expect("Failed to connect to database");
 
     // Setup email client, we're using singleton to utilize reqwest's HTTP connection pooling
-    let sender_email = configuration
+    let email_client_sender_email = configuration
         .email_client
         .sender()
-        .expect("Invalid sender email address.");
+        .expect("Invalid sender email address for email client.");
+    let email_client_timeout_duration = configuration.email_client.timeout();
     let email_client = EmailClient::new(
         configuration.email_client.base_url,
-        sender_email,
+        email_client_sender_email,
         configuration.email_client.authorization_token,
+        email_client_timeout_duration,
     );
 
     let address = format!(

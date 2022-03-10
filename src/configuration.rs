@@ -1,5 +1,6 @@
 use secrecy::ExposeSecret;
 use secrecy::Secret;
+use std::time;
 
 use crate::domains::SubscriberEmail;
 
@@ -32,12 +33,7 @@ pub struct EmailClientSettings {
     pub base_url: String,
     pub sender_email: String,
     pub authorization_token: Secret<String>,
-}
-
-impl EmailClientSettings {
-    pub fn sender(&self) -> Result<SubscriberEmail, String> {
-        SubscriberEmail::parse(self.sender_email.clone())
-    }
+    pub timeout_milliseconds: u64,
 }
 
 #[derive(serde::Deserialize)]
@@ -53,6 +49,21 @@ pub struct DBSettings {
     pub host: String,
     pub port: u16,
     pub db_name: String,
+}
+
+pub enum Environment {
+    Local,
+    Production,
+}
+
+impl EmailClientSettings {
+    pub fn sender(&self) -> Result<SubscriberEmail, String> {
+        SubscriberEmail::parse(self.sender_email.clone())
+    }
+
+    pub fn timeout(&self) -> time::Duration {
+        time::Duration::from_millis(self.timeout_milliseconds)
+    }
 }
 
 impl DBSettings {
@@ -76,11 +87,6 @@ impl DBSettings {
             self.port
         ))
     }
-}
-
-pub enum Environment {
-    Local,
-    Production,
 }
 
 impl Environment {

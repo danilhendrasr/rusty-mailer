@@ -1,5 +1,9 @@
 use secrecy::ExposeSecret;
 use secrecy::Secret;
+use serde_aux::field_attributes::deserialize_number_from_string;
+use sqlx::postgres::PgConnectOptions;
+use sqlx::postgres::PgSslMode;
+use sqlx::ConnectOptions;
 use std::time;
 
 use crate::domains::SubscriberEmail;
@@ -17,6 +21,10 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
         .expect("Failed to read APP_ENVIRONMENT environment variable.");
 
     settings.merge(config::File::from(config_dir.join(environment.as_str())).required(true))?;
+
+    // Add in settings from environment variables (with a prefix of APP and '__' as separator)
+    // E.g. `APP_APPLICATION__PORT=5001 would set `Settings.application.port`
+    settings.merge(config::Environment::with_prefix("app").separator("__"))?;
 
     settings.try_into()
 }
@@ -39,6 +47,8 @@ pub struct EmailClientSettings {
 #[derive(serde::Deserialize, Clone)]
 pub struct ApplicationSettings {
     pub host: String,
+    // Prevent error when deserializing string to u16
+    #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
 }
 
@@ -47,8 +57,11 @@ pub struct DBSettings {
     pub username: String,
     pub password: Secret<String>,
     pub host: String,
+    // Prevent error when deserializing string to u16
+    #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub db_name: String,
+    pub require_ssl: bool,
 }
 
 pub enum Environment {
@@ -67,6 +80,27 @@ impl EmailClientSettings {
 }
 
 impl DBSettings {
+    pub fn without_db(&self) -> PgConnectOptions {
+        let ssl_mode = if self.require_ssl {
+            PgSslMode::Require
+        } else {
+            PgSslMode::Prefer
+        };
+
+        PgConnectOptions::new()
+            .host(&self.host)
+            .username(&self.username)
+            .password(self.password.expose_secret())
+            .port(self.port)
+            .ssl_mode(ssl_mode)
+    }
+
+    pub fn with_db(&self) -> PgConnectOptions {
+        let mut options = self.without_db().database(&self.db_name);
+        options.log_statements(tracing::log::LevelFilter::Trace);
+        options
+    }
+
     pub fn connection_string(&self) -> Secret<String> {
         Secret::new(format!(
             "postgres://{}:{}@{}:{}/{}",

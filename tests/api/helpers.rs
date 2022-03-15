@@ -1,5 +1,4 @@
 use once_cell::sync::Lazy;
-use secrecy::ExposeSecret;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
 use zero2prod::{
@@ -59,12 +58,12 @@ pub async fn spawn_app() -> TestApp {
 
     TestApp {
         address,
-        db_pool: get_connection_pool(&configuration.database.connection_string().expose_secret()),
+        db_pool: get_connection_pool(&configuration.database),
     }
 }
 
 async fn configure_db(settings: &DBSettings) -> PgPool {
-    let mut connection = PgConnection::connect(&settings.connection_string_wo_db().expose_secret())
+    let mut connection = PgConnection::connect_with(&settings.without_db())
         .await
         .expect("Failed connecting to the database");
 
@@ -73,7 +72,7 @@ async fn configure_db(settings: &DBSettings) -> PgPool {
         .await
         .expect(format!("Failed to create {} database", settings.db_name).as_str());
 
-    let connection_pool = PgPool::connect(&settings.connection_string().expose_secret())
+    let connection_pool = PgPool::connect_with(settings.with_db())
         .await
         .expect(format!("Failed to connect to database {}", settings.db_name).as_str());
 

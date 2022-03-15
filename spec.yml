@@ -1,0 +1,41 @@
+#! spec.yaml
+name: zero2prod
+
+region: sgp1
+services:
+  - name: zero2prod
+    dockerfile_path: Dockerfile
+    source_dir: .
+    github:
+      branch: main
+      deploy_on_push: true
+      repo: danilhendrasr/rusty-mailer
+    health_check:
+      http_path: /health-check
+    http_port: 8081
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    routes:
+      - path: /
+    envs:
+      - key: APP_DATABASE__USERNAME
+        scope: RUN_TIME
+        value: ${newsletter.USERNAME}
+      - key: APP_DATABASE__PASSWORD
+        scope: RUN_TIME
+        value: ${newsletter.PASSWORD}
+      - key: APP_DATABASE__HOST
+        scope: RUN_TIME
+        value: ${newsletter.HOSTNAME}
+      - key: APP_DATABASE__PORT
+        scope: RUN_TIME
+        value: ${newsletter.PORT}
+      - key: APP_DATABASE__DB_NAME
+        scope: RUN_TIME
+        value: ${newsletter.DATABASE}
+databases:
+  - name: newsletter
+    engine: PG
+    num_nodes: 1
+    size: db-s-dev-database
+    version: "12"

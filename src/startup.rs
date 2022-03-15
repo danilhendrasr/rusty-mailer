@@ -1,13 +1,19 @@
 use std::net::TcpListener;
 
 use actix_web::dev::Server;
-use secrecy::ExposeSecret;
-use sqlx::{PgPool, Pool, Postgres};
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
-use crate::{configuration::Settings, email_client::EmailClient, run};
+use crate::{
+    configuration::{DBSettings, Settings},
+    email_client::EmailClient,
+    run,
+};
+use std::time::Duration;
 
-pub fn get_connection_pool(connection_string: &str) -> Pool<Postgres> {
-    PgPool::connect_lazy(connection_string).expect("Failed to connect to database")
+pub fn get_connection_pool(configuration: &DBSettings) -> Pool<Postgres> {
+    PgPoolOptions::new()
+        .connect_timeout(Duration::from_secs(5))
+        .connect_lazy_with(configuration.with_db())
 }
 
 pub struct Application {
@@ -17,8 +23,7 @@ pub struct Application {
 
 impl Application {
     pub async fn build(configuration: Settings) -> Result<Self, std::io::Error> {
-        let db_pool =
-            get_connection_pool(configuration.database.connection_string().expose_secret());
+        let db_pool = get_connection_pool(&configuration.database);
 
         // Setup email client, we're using singleton to utilize reqwest's HTTP connection pooling
         let email_client_sender_email = configuration

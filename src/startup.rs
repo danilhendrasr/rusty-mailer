@@ -12,7 +12,7 @@ use std::time::Duration;
 
 pub fn get_connection_pool(configuration: &DBSettings) -> Pool<Postgres> {
     PgPoolOptions::new()
-        .connect_timeout(Duration::from_secs(5))
+        .connect_timeout(Duration::from_secs(10))
         .connect_lazy_with(configuration.with_db())
 }
 

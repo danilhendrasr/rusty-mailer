@@ -2,6 +2,7 @@ use crate::domains::SubscriberEmail;
 use secrecy::{ExposeSecret, Secret};
 use std::time;
 
+#[derive(Debug)]
 pub struct EmailClient {
     http_client: reqwest::Client,
     base_url: String,
@@ -39,7 +40,7 @@ impl EmailClient {
     }
 
     pub async fn send_email(
-        self,
+        &self,
         recipient: SubscriberEmail,
         subject: &str,
         html_content: &str,

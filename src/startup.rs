@@ -16,6 +16,12 @@ pub fn get_connection_pool(configuration: &DBSettings) -> Pool<Postgres> {
         .connect_lazy_with(configuration.with_db())
 }
 
+// We need to define a wrapper type in order to retrieve the URL
+// in the `subscribe` handler.
+// Retrieval from the context, in actix-web, is type-based: using
+// a raw `String` would expose us to conflicts.
+pub struct ApplicationBaseUrl(pub String);
+
 pub struct Application {
     port: u16,
     server: Server,
@@ -47,7 +53,12 @@ impl Application {
 
         let listener = TcpListener::bind(address)?;
         let port = listener.local_addr().unwrap().port();
-        let server = run(listener, db_pool, email_client)?;
+        let server = run(
+            listener,
+            db_pool,
+            email_client,
+            configuration.application.base_url,
+        )?;
 
         Ok(Self { port, server })
     }

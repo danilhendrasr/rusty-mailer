@@ -50,6 +50,7 @@ pub struct ApplicationSettings {
     // Prevent error when deserializing string to u16
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
+    pub base_url: String,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]

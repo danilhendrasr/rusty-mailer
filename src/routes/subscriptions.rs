@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse, ResponseError, Result};
+use anyhow::Context;
 use chrono::Utc;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -42,35 +43,24 @@ pub async fn subscribe(
 ) -> Result<HttpResponse, SubscribeError> {
     let new_subscriber = data.0.try_into().map_err(SubscribeError::ValidationError)?;
 
-    let mut transaction = db_pool.begin().await.map_err(|e| {
-        SubscribeError::UnexpectedError(
-            Box::new(e),
-            "Failed to acquire connection from DB pool.".into(),
-        )
-    })?;
+    let mut transaction = db_pool
+        .begin()
+        .await
+        .context("Failed to acquire connection from DB pool.")?;
 
     let new_subscriber_s_id = insert_subscriber(&mut transaction, &new_subscriber)
         .await
-        .map_err(|e| {
-            SubscribeError::UnexpectedError(Box::new(e), "Failed to insert new subscriber.".into())
-        })?;
+        .context("Failed to insert new subscriber.")?;
 
     let subscription_token = generate_subscription_token();
     insert_subscription_token(&mut transaction, new_subscriber_s_id, &subscription_token)
         .await
-        .map_err(|e| {
-            SubscribeError::UnexpectedError(
-                Box::new(e),
-                "Failed to insert subscription token.".into(),
-            )
-        })?;
+        .context("Failed to insert subscription token.")?;
 
-    transaction.commit().await.map_err(|e| {
-        SubscribeError::UnexpectedError(
-            Box::new(e),
-            "Failed to commit SQL transaction for saving new subscriber.".into(),
-        )
-    })?;
+    transaction
+        .commit()
+        .await
+        .context("Failed to commit SQL transaction for saving new subscriber.")?;
 
     send_confirmation_email(
         new_subscriber,
@@ -79,9 +69,7 @@ pub async fn subscribe(
         &subscription_token,
     )
     .await
-    .map_err(|e| {
-        SubscribeError::UnexpectedError(Box::new(e), "Failed to send confirmation email.".into())
-    })?;
+    .context("Failed to send confirmation email.")?;
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -221,8 +209,8 @@ fn error_chain_fmt(
 pub enum SubscribeError {
     #[error("{0}")]
     ValidationError(String),
-    #[error("{1}")]
-    UnexpectedError(#[source] Box<dyn std::error::Error>, String),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
 }
 
 impl std::fmt::Debug for SubscribeError {
@@ -235,7 +223,7 @@ impl ResponseError for SubscribeError {
     fn status_code(&self) -> reqwest::StatusCode {
         match self {
             SubscribeError::ValidationError(_) => reqwest::StatusCode::BAD_REQUEST,
-            SubscribeError::UnexpectedError(_, _) => reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            SubscribeError::UnexpectedError(_) => reqwest::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

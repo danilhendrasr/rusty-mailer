@@ -31,6 +31,15 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
+    pub async fn post_newsletter(&self, body: &serde_json::Value) -> reqwest::Response {
+        reqwest::Client::new()
+            .post(format!("{}/newsletters", self.address))
+            .json(body)
+            .send()
+            .await
+            .expect("Failed to send reqwest to /newsletters")
+    }
+
     pub fn get_confirmation_link_from_email_body(
         &self,
         email_request: &wiremock::Request,

@@ -1,5 +1,11 @@
-use actix_web::{web, HttpResponse, ResponseError};
+use actix_web::{
+    http,
+    http::header,
+    http::header::{HeaderMap, HeaderValue},
+    web, HttpRequest, HttpResponse, ResponseError,
+};
 use anyhow::Context;
+use secrecy::Secret;
 use sqlx::PgPool;
 
 use crate::{domains::SubscriberEmail, email_client::EmailClient};
@@ -8,6 +14,8 @@ use super::error_chain_fmt;
 
 #[derive(thiserror::Error)]
 pub enum PublishError {
+    #[error("Authentication failed.")]
+    AuthError(#[source] anyhow::Error),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }
@@ -19,9 +27,23 @@ impl std::fmt::Debug for PublishError {
 }
 
 impl ResponseError for PublishError {
-    fn status_code(&self) -> reqwest::StatusCode {
+    fn error_response(&self) -> HttpResponse<actix_web::body::BoxBody> {
         match self {
-            PublishError::UnexpectedError(_) => reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            PublishError::UnexpectedError(_) => {
+                HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR)
+            }
+            PublishError::AuthError(_) => {
+                let mut response = HttpResponse::new(http::StatusCode::UNAUTHORIZED);
+
+                let header_value_authenticate =
+                    HeaderValue::from_str(r#"Basic realm="publish""#).unwrap();
+
+                response
+                    .headers_mut()
+                    .insert(header::WWW_AUTHENTICATE, header_value_authenticate);
+
+                response
+            }
         }
     }
 }
@@ -38,13 +60,15 @@ pub struct Content {
     pub html: String,
 }
 
-#[tracing::instrument("Publishing newsletter", skip(body, pool, email_client))]
+#[tracing::instrument("Publishing newsletter", skip(body, pool, email_client, request))]
 pub async fn publish_newsletter(
     body: web::Json<BodyData>,
     pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
+    request: HttpRequest,
 ) -> actix_web::Result<HttpResponse, PublishError> {
     let confirmed_subscribers = get_confirmed_subscriber(&pool).await?;
+    let _credentials = basic_authentication(request.headers()).map_err(PublishError::AuthError)?;
 
     for subscriber in confirmed_subscribers {
         match subscriber {
@@ -96,4 +120,43 @@ async fn get_confirmed_subscriber(
         .collect();
 
     Ok(rows)
+}
+
+struct UserCredentials {
+    pub username: String,
+    pub password: Secret<String>,
+}
+
+fn basic_authentication(headers: &HeaderMap) -> Result<UserCredentials, anyhow::Error> {
+    let auth_header_value = headers
+        .get("Authorization")
+        .context("The 'Authorization' header is missing.")?
+        .to_str()
+        .context("The 'Authorization' header is not a valid UTF8 string.")?;
+
+    let auth_base64_str = auth_header_value
+        .strip_prefix("Basic ")
+        .context("The Authorization scheme is not 'Basic '.")?;
+
+    let decoded_base64_bytes = base64::decode(auth_base64_str)
+        .context("Failed decoding the Authorization base64 string.")?;
+
+    let decoded_string = String::from_utf8(decoded_base64_bytes)
+        .context("The credentials is not a valid UTF8 string.")?;
+
+    let mut splitted_string = decoded_string.splitn(2, ':');
+    let username = splitted_string
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Missing username in the authentication."))?
+        .to_string();
+
+    let password = splitted_string
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Missing password in the authentication."))?
+        .to_string();
+
+    Ok(UserCredentials {
+        username,
+        password: Secret::new(password),
+    })
 }

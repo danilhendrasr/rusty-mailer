@@ -6,6 +6,32 @@ use wiremock::{
 use crate::helpers::{spawn_app, ConfirmationLink, TestApp};
 
 #[tokio::test]
+async fn request_missing_auth_header_is_rejected() {
+    let app = spawn_app().await;
+
+    let body = serde_json::json!({
+        "title": "Newsletter Title",
+        "content": {
+            "text": "Newsletter body as plain text",
+            "html": "<p>Newsletter body as plain text</p>"
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/newsletters", app.address))
+        .json(&body)
+        .send()
+        .await
+        .expect("Failed to send reqwest to /newsletters");
+
+    assert_eq!(response.status().as_u16(), 401);
+    assert_eq!(
+        response.headers()["WWW-Authenticate"],
+        r#"Basic realm="publish""#
+    );
+}
+
+#[tokio::test]
 async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
     let app = spawn_app().await;
     create_unconfirmed_subscriber(&app).await;

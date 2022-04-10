@@ -5,7 +5,7 @@ use actix_web::{
     web, HttpRequest, HttpResponse, ResponseError,
 };
 use anyhow::Context;
-use secrecy::Secret;
+use secrecy::{ExposeSecret, Secret};
 use sqlx::PgPool;
 
 use crate::{domains::SubscriberEmail, email_client::EmailClient};
@@ -60,7 +60,11 @@ pub struct Content {
     pub html: String,
 }
 
-#[tracing::instrument("Publishing newsletter", skip(body, pool, email_client, request))]
+#[tracing::instrument(
+    "Publishing newsletter", 
+    skip(body, pool, email_client, request), 
+    fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
+)]
 pub async fn publish_newsletter(
     body: web::Json<BodyData>,
     pool: web::Data<PgPool>,
@@ -68,7 +72,10 @@ pub async fn publish_newsletter(
     request: HttpRequest,
 ) -> actix_web::Result<HttpResponse, PublishError> {
     let confirmed_subscribers = get_confirmed_subscriber(&pool).await?;
-    let _credentials = basic_authentication(request.headers()).map_err(PublishError::AuthError)?;
+    let credentials = basic_authentication(request.headers()).map_err(PublishError::AuthError)?;
+    tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
+    let user_id = validate_credentials(&credentials, &pool).await?;
+    tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
 
     for subscriber in confirmed_subscribers {
         match subscriber {
@@ -159,4 +166,23 @@ fn basic_authentication(headers: &HeaderMap) -> Result<UserCredentials, anyhow::
         username,
         password: Secret::new(password),
     })
+}
+
+async fn validate_credentials(
+    credentials: &UserCredentials,
+    pool: &PgPool,
+) -> Result<uuid::Uuid, PublishError> {
+    let row = sqlx::query!(
+        r#"SELECT id FROM users WHERE username = $1 AND password = $2"#,
+        credentials.username,
+        credentials.password.expose_secret()
+    )
+    .fetch_optional(pool)
+    .await
+    .context("Failed fetching the user from the database.")
+    .map_err(PublishError::UnexpectedError)?;
+
+    row.map(|r| r.id)
+        .ok_or_else(|| anyhow::anyhow!("Invalid username or password."))
+        .map_err(PublishError::AuthError)
 }

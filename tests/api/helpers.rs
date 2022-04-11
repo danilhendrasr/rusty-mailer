@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use sha3::Digest;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
 use wiremock::MockServer;
@@ -13,11 +14,43 @@ pub struct ConfirmationLink {
     pub plain_text: reqwest::Url,
 }
 
+pub struct TestUser {
+    id: Uuid,
+    username: String,
+    password: String,
+}
+
+impl TestUser {
+    pub fn generate() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            username: Uuid::new_v4().to_string(),
+            password: Uuid::new_v4().to_string(),
+        }
+    }
+
+    pub async fn store(&self, pool: &PgPool) {
+        let password_hash = sha3::Sha3_256::digest(&self.password);
+        let password_hash = format!("{:x}", password_hash);
+
+        sqlx::query!(
+            r#"INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)"#,
+            self.id,
+            self.username,
+            password_hash
+        )
+        .execute(pool)
+        .await
+        .expect("Failed to insert test user.");
+    }
+}
+
 pub struct TestApp {
     pub address: String,
     pub db_pool: PgPool,
     pub email_server: MockServer,
     pub port: u16,
+    pub test_user: TestUser,
 }
 
 impl TestApp {
@@ -32,11 +65,9 @@ impl TestApp {
     }
 
     pub async fn post_newsletter(&self, body: &serde_json::Value) -> reqwest::Response {
-        let (test_username, test_password) = self.get_test_user().await;
-
         reqwest::Client::new()
             .post(format!("{}/newsletters", self.address))
-            .basic_auth(test_username, Some(test_password))
+            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
             .json(body)
             .send()
             .await
@@ -68,15 +99,6 @@ impl TestApp {
         let plain_text = get_links(&body["text_body"].as_str().unwrap());
 
         ConfirmationLink { html, plain_text }
-    }
-
-    pub async fn get_test_user(&self) -> (String, String) {
-        let row = sqlx::query!("SELECT username, password FROM users LIMIT 1")
-            .fetch_one(&self.db_pool)
-            .await
-            .expect("Test user does not exists.");
-
-        (row.username, row.password)
     }
 }
 
@@ -121,23 +143,15 @@ pub async fn spawn_app() -> TestApp {
         db_pool: get_connection_pool(&configuration.database),
         email_server,
         port: application_port,
+        test_user: TestUser::generate(),
     };
 
-    insert_test_user(&test_app_instance.db_pool).await;
+    test_app_instance
+        .test_user
+        .store(&test_app_instance.db_pool)
+        .await;
 
     test_app_instance
-}
-
-async fn insert_test_user(pool: &PgPool) {
-    sqlx::query!(
-        r#"INSERT INTO users (id, username, password) VALUES ($1, $2, $3)"#,
-        Uuid::new_v4(),
-        Uuid::new_v4().to_string(),
-        Uuid::new_v4().to_string()
-    )
-    .execute(pool)
-    .await
-    .expect("Failed to insert test user.");
 }
 
 async fn configure_db(settings: &DBSettings) -> PgPool {

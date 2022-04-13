@@ -13,6 +13,27 @@
     },
     "query": "\n        INSERT INTO subscription_tokens (subscriber_id, subscription_token) VALUES ($1, $2)\n    "
   },
+  "45794f9835b0a639a1e9e688f5fea60309d5b1e0e6dd87f9792ae8ff47997c38": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      }
+    },
+    "query": "SELECT id FROM users WHERE username = $1 AND password_hash = $2"
+  },
   "92d1430cbd64c1424560b061cb2cb395369617b1e72bc6e86e7f1cd987748491": {
     "describe": {
       "columns": [
@@ -62,27 +83,6 @@
       }
     },
     "query": "SELECT subscriber_id FROM subscription_tokens WHERE subscription_token = $1"
-  },
-  "ccad5ae6837effa988515c12dfcf1e7e1dec3fc284db51d6bbfddea7df07287d": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Uuid"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text",
-          "Text"
-        ]
-      }
-    },
-    "query": "SELECT id FROM users WHERE username = $1 AND password = $2"
   },
   "f662f52204ac729545aafa231ee19008d7ca139a923e5f7a1e6fece3a4fa8884": {
     "describe": {

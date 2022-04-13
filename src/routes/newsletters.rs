@@ -6,8 +6,8 @@ use actix_web::{
 };
 use anyhow::Context;
 use secrecy::{ExposeSecret, Secret};
-use sqlx::PgPool;
 use sha3::Digest;
+use sqlx::PgPool;
 
 use crate::{domains::SubscriberEmail, email_client::EmailClient};
 
@@ -63,7 +63,7 @@ pub struct Content {
 
 #[tracing::instrument(
     "Publishing newsletter", 
-    skip(body, pool, email_client, request), 
+    skip(body, pool, email_client, request),
     fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
 )]
 pub async fn publish_newsletter(

@@ -5,8 +5,8 @@ use actix_web::{
     web, HttpRequest, HttpResponse, ResponseError,
 };
 use anyhow::Context;
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use secrecy::{ExposeSecret, Secret};
-use sha3::Digest;
 use sqlx::PgPool;
 
 use crate::{domains::SubscriberEmail, email_client::EmailClient};
@@ -74,6 +74,7 @@ pub async fn publish_newsletter(
 ) -> actix_web::Result<HttpResponse, PublishError> {
     let confirmed_subscribers = get_confirmed_subscriber(&pool).await?;
     let credentials = basic_authentication(request.headers()).map_err(PublishError::AuthError)?;
+
     tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
     let user_id = validate_credentials(&credentials, &pool).await?;
     tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
@@ -135,6 +136,7 @@ struct UserCredentials {
     pub password: Secret<String>,
 }
 
+#[tracing::instrument("Decoding Authorization header.", skip(headers))]
 fn basic_authentication(headers: &HeaderMap) -> Result<UserCredentials, anyhow::Error> {
     let auth_header_value = headers
         .get("Authorization")
@@ -169,24 +171,40 @@ fn basic_authentication(headers: &HeaderMap) -> Result<UserCredentials, anyhow::
     })
 }
 
+#[tracing::instrument("Validating credentials.", skip(credentials, pool))]
 async fn validate_credentials(
     credentials: &UserCredentials,
     pool: &PgPool,
 ) -> Result<uuid::Uuid, PublishError> {
-    let password_hash = sha3::Sha3_256::digest(credentials.password.expose_secret().as_bytes());
-    let password_hash = format!("{:x}", password_hash);
-
     let row = sqlx::query!(
-        r#"SELECT id FROM users WHERE username = $1 AND password_hash = $2"#,
-        credentials.username,
-        password_hash
+        r#"SELECT id, password_hash FROM users WHERE username = $1"#,
+        credentials.username
     )
     .fetch_optional(pool)
     .await
     .context("Failed fetching the user from the database.")
     .map_err(PublishError::UnexpectedError)?;
 
-    row.map(|r| r.id)
-        .ok_or_else(|| anyhow::anyhow!("Invalid username or password."))
-        .map_err(PublishError::AuthError)
+    let (user_id, expected_password_hash) = match row {
+        Some(value) => (value.id, value.password_hash),
+        None => {
+            return Err(PublishError::AuthError(anyhow::anyhow!(
+                "Username not found."
+            )))
+        }
+    };
+
+    let password_hash = PasswordHash::new(&expected_password_hash)
+        .context("Failed parsing password hash from PHC string.")
+        .map_err(PublishError::UnexpectedError)?;
+
+    Argon2::default()
+        .verify_password(
+            credentials.password.expose_secret().as_bytes(),
+            &password_hash,
+        )
+        .context("Invalid password.")
+        .map_err(PublishError::AuthError)?;
+
+    Ok(user_id)
 }

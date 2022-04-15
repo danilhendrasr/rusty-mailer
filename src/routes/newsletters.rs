@@ -176,35 +176,42 @@ async fn validate_credentials(
     credentials: &UserCredentials,
     pool: &PgPool,
 ) -> Result<uuid::Uuid, PublishError> {
-    let row = sqlx::query!(
-        r#"SELECT id, password_hash FROM users WHERE username = $1"#,
-        credentials.username
-    )
-    .fetch_optional(pool)
-    .await
-    .context("Failed fetching the user from the database.")
-    .map_err(PublishError::UnexpectedError)?;
+    let (user_id, expected_password_hash) =
+        get_stored_user_credentials(&credentials.username, pool)
+            .await
+            .map_err(PublishError::UnexpectedError)?
+            .ok_or_else(|| PublishError::AuthError(anyhow::anyhow!("Username not found.")))?;
 
-    let (user_id, expected_password_hash) = match row {
-        Some(value) => (value.id, value.password_hash),
-        None => {
-            return Err(PublishError::AuthError(anyhow::anyhow!(
-                "Username not found."
-            )))
-        }
-    };
-
-    let password_hash = PasswordHash::new(&expected_password_hash)
+    let password_hash = PasswordHash::new(&expected_password_hash.expose_secret())
         .context("Failed parsing password hash from PHC string.")
         .map_err(PublishError::UnexpectedError)?;
 
-    Argon2::default()
-        .verify_password(
-            credentials.password.expose_secret().as_bytes(),
-            &password_hash,
-        )
+    tracing::info_span!("Verify password hash")
+        .in_scope(|| {
+            Argon2::default().verify_password(
+                credentials.password.expose_secret().as_bytes(),
+                &password_hash,
+            )
+        })
         .context("Invalid password.")
         .map_err(PublishError::AuthError)?;
 
     Ok(user_id)
+}
+
+#[tracing::instrument("Get stored user credentials.", skip(username, pool))]
+async fn get_stored_user_credentials(
+    username: &str,
+    pool: &PgPool,
+) -> Result<Option<(uuid::Uuid, Secret<String>)>, anyhow::Error> {
+    let row = sqlx::query!(
+        r#"SELECT id, password_hash FROM users WHERE username = $1"#,
+        username
+    )
+    .fetch_optional(pool)
+    .await
+    .context("Failed fetching stored user credentials from the database.")?
+    .map(|row| (row.id, Secret::new(row.password_hash)));
+
+    Ok(row)
 }

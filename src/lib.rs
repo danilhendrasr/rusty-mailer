@@ -31,6 +31,7 @@ pub fn run(
             .route("/subscriptions", web::post().to(routes::subscribe))
             .route("/newsletters", web::post().to(routes::publish_newsletter))
             .route("/subscriptions/confirm", web::get().to(routes::confirm))
+            .route("/", web::get().to(routes::home))
             .app_data(db_pool.clone())
             .app_data(email_client.clone())
             .app_data(base_url.clone())

@@ -7,6 +7,7 @@ use sqlx::PgPool;
 use startup::ApplicationBaseUrl;
 use tracing_actix_web::TracingLogger;
 
+pub mod authentication;
 pub mod configuration;
 pub mod domains;
 pub mod email_client;
@@ -32,6 +33,8 @@ pub fn run(
             .route("/newsletters", web::post().to(routes::publish_newsletter))
             .route("/subscriptions/confirm", web::get().to(routes::confirm))
             .route("/", web::get().to(routes::home))
+            .route("/login", web::get().to(routes::login_form))
+            .route("/login", web::post().to(routes::login))
             .app_data(db_pool.clone())
             .app_data(email_client.clone())
             .app_data(base_url.clone())

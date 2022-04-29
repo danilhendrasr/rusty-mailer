@@ -1,8 +1,10 @@
 use std::net::TcpListener;
 
+use crate::startup::HmacSecret;
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
 use email_client::EmailClient;
+use secrecy::Secret;
 use sqlx::PgPool;
 use startup::ApplicationBaseUrl;
 use tracing_actix_web::TracingLogger;
@@ -20,10 +22,12 @@ pub fn run(
     db_pool: PgPool,
     email_client: EmailClient,
     base_url: String,
+    hmac_secret: Secret<String>,
 ) -> Result<Server, std::io::Error> {
     let db_pool = web::Data::new(db_pool);
     let email_client = web::Data::new(email_client);
     let base_url = web::Data::new(ApplicationBaseUrl(base_url));
+    let hmac_secret = web::Data::new(HmacSecret(hmac_secret));
 
     let server = HttpServer::new(move || {
         App::new()
@@ -38,6 +42,7 @@ pub fn run(
             .app_data(db_pool.clone())
             .app_data(email_client.clone())
             .app_data(base_url.clone())
+            .app_data(hmac_secret.clone())
     })
     .listen(listener)?
     .run();

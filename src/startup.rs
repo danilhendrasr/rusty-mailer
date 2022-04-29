@@ -1,6 +1,7 @@
 use std::net::TcpListener;
 
 use actix_web::dev::Server;
+use secrecy::Secret;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 use crate::{
@@ -15,6 +16,8 @@ pub fn get_connection_pool(configuration: &DBSettings) -> Pool<Postgres> {
         .connect_timeout(Duration::from_secs(10))
         .connect_lazy_with(configuration.with_db())
 }
+
+pub struct HmacSecret(pub Secret<String>);
 
 // We need to define a wrapper type in order to retrieve the URL
 // in the `subscribe` handler.
@@ -58,6 +61,7 @@ impl Application {
             db_pool,
             email_client,
             configuration.application.base_url,
+            configuration.application.hmac_secret,
         )?;
 
         Ok(Self { port, server })

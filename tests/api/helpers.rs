@@ -61,11 +61,12 @@ pub struct TestApp {
     pub email_server: MockServer,
     pub port: u16,
     pub test_user: TestUser,
+    pub http_client: reqwest::Client,
 }
 
 impl TestApp {
     pub async fn post_subscription(&self, body: String) -> reqwest::Response {
-        reqwest::Client::new()
+        self.http_client
             .post(format!("{}/subscriptions", self.address))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
@@ -75,7 +76,7 @@ impl TestApp {
     }
 
     pub async fn post_newsletter(&self, body: &serde_json::Value) -> reqwest::Response {
-        reqwest::Client::new()
+        self.http_client
             .post(format!("{}/newsletters", self.address))
             .basic_auth(&self.test_user.username, Some(&self.test_user.password))
             .json(body)
@@ -88,12 +89,7 @@ impl TestApp {
     where
         Body: serde::Serialize,
     {
-        let reqwest_client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .unwrap();
-
-        reqwest_client
+        self.http_client
             .post(format!("{}/login", self.address))
             .form(body)
             .send()
@@ -126,6 +122,17 @@ impl TestApp {
         let plain_text = get_links(&body["text_body"].as_str().unwrap());
 
         ConfirmationLink { html, plain_text }
+    }
+
+    pub async fn get_login_html(&self) -> String {
+        self.http_client
+            .get(format!("{}/login", self.address))
+            .send()
+            .await
+            .expect("Failed getting the login form HTML")
+            .text()
+            .await
+            .unwrap()
     }
 }
 
@@ -165,12 +172,19 @@ pub async fn spawn_app() -> TestApp {
     let address = format!("http://127.0.0.1:{}", application.port());
     tokio::spawn(application.run_until_stopped());
 
+    let http_client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .cookie_store(true)
+        .build()
+        .unwrap();
+
     let test_app_instance = TestApp {
         address,
         db_pool: get_connection_pool(&configuration.database),
         email_server,
         port: application_port,
         test_user: TestUser::generate(),
+        http_client,
     };
 
     test_app_instance

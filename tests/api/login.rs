@@ -14,4 +14,12 @@ pub async fn respond_with_303_on_failure() {
 
     assert_eq!(flash_cookie.value(), "Invalid credentials.");
     assert_eq!(response.status().as_u16(), 303);
+
+    // Check if login page contains the error message
+    let login_page_html = app.get_login_html().await;
+    assert!(login_page_html.contains("<p><i>Invalid credentials.</i></p>"));
+
+    // Reload the login page and check again if it still contains the error message
+    let login_page_html = app.get_login_html().await;
+    assert!(!login_page_html.contains("<p><i>Invalid credentials.</i></p>"));
 }

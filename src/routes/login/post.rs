@@ -1,18 +1,15 @@
-use actix_web::{error::InternalError, http::header, web, HttpResponse};
-use hmac::{Hmac, Mac};
-use secrecy::{ExposeSecret, Secret};
-use sha2::Sha256;
+use actix_web::{cookie::Cookie, error::InternalError, http::header, web, HttpResponse};
+use secrecy::Secret;
 use sqlx::PgPool;
 
 use crate::{
     authentication::{validate_credentials, AuthError, UserCredentials},
     routes::error_chain_fmt,
-    startup::HmacSecret,
 };
 
 #[derive(thiserror::Error)]
 pub enum LoginError {
-    #[error("Invalid credentialss.")]
+    #[error("Invalid credentials.")]
     AuthError(#[source] anyhow::Error),
     #[error("Something went wrong.")]
     UnexpectedError(#[from] anyhow::Error),
@@ -33,13 +30,12 @@ pub struct LoginFormData {
 }
 
 #[tracing::instrument(
-    skip(form_data, db_pool, hmac_secret),
+    skip(form_data, db_pool),
     fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
 )]
 pub async fn login(
     form_data: web::Form<LoginFormData>,
     db_pool: web::Data<PgPool>,
-    hmac_secret: web::Data<HmacSecret>,
 ) -> Result<HttpResponse, InternalError<LoginError>> {
     let user_credentials = UserCredentials {
         username: form_data.0.username,
@@ -65,21 +61,9 @@ pub async fn login(
                 AuthError::UnexpectedError(_) => LoginError::UnexpectedError(e.into()),
             };
 
-            let query_string = format!("error={}", urlencoding::Encoded::new(e.to_string()));
-
-            let hmac_tag = {
-                let mut mac =
-                    Hmac::<Sha256>::new_from_slice(hmac_secret.0.expose_secret().as_bytes())
-                        .unwrap();
-                mac.update(query_string.as_bytes());
-                mac.finalize().into_bytes()
-            };
-
             let response = HttpResponse::SeeOther()
-                .insert_header((
-                    header::LOCATION,
-                    format!("/login?{query_string}&tag={hmac_tag:x}"),
-                ))
+                .insert_header((header::LOCATION, format!("/login")))
+                .cookie(Cookie::new("_flash", e.to_string()))
                 .finish();
 
             Err(InternalError::from_response(e, response))

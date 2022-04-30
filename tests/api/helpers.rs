@@ -84,6 +84,23 @@ impl TestApp {
             .expect("Failed to send reqwest to /newsletters")
     }
 
+    pub async fn post_login<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
+        let reqwest_client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+
+        reqwest_client
+            .post(format!("{}/login", self.address))
+            .form(body)
+            .send()
+            .await
+            .expect("Failed to send reqwest to /login")
+    }
+
     pub fn get_confirmation_link_from_email_body(
         &self,
         email_request: &wiremock::Request,

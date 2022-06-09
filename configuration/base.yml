@@ -13,3 +13,4 @@ email_client:
   sender_email: 19081010016@student.upnjatim.ac.id
   authorization_token: POSTMARK_API_TEST
   timeout_milliseconds: 3000
+redis_uri: "redis://127.0.0.1:6379"

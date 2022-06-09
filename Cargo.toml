@@ -17,7 +17,7 @@ actix-web = "4.0.0-beta.21"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = "1.0.136"
 config = "0.11"
-uuid = { version = "0.8.2", features = ["v4"] }
+uuid = { version = "0.8.2", features = ["v4", "serde"] }
 chrono = "0.4.19"
 tracing = { version = "0.1.31", features = ["log"] }
 tracing-bunyan-formatter = "0.3.2"
@@ -38,6 +38,8 @@ argon2 = { version = "0.4.0", features = ["std"] }
 urlencoding = "2.1.0"
 htmlescape = "0.3.1"
 actix-web-flash-messages = { version = "0.3.2", features = ["cookies"] }
+actix-session = { version = "0.6", features = ["redis-rs-tls-session"] }
+serde_json = "1.0.81"
 
 [dependencies.reqwest]
 version = "0.11.9"

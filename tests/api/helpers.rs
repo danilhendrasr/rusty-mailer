@@ -97,6 +97,26 @@ impl TestApp {
             .expect("Failed to send reqwest to /login")
     }
 
+    pub async fn post_logout(&self) -> reqwest::Response {
+        self.http_client
+            .post(format!("{}/admin/logout", self.address))
+            .send()
+            .await
+            .expect("Failed to send reqwest to /logout")
+    }
+
+    pub async fn post_change_password<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
+        self.http_client
+            .post(format!("{}/admin/password", self.address))
+            .form(body)
+            .send()
+            .await
+            .expect("Failed to send POST request to /admin/password")
+    }
+
     pub fn get_confirmation_link_from_email_body(
         &self,
         email_request: &wiremock::Request,
@@ -145,6 +165,22 @@ impl TestApp {
 
     pub async fn get_admin_dashboard_html(&self) -> String {
         self.get_admin_dashboard().await.text().await.unwrap()
+    }
+
+    pub async fn get_change_password(&self) -> reqwest::Response {
+        self.http_client
+            .get(format!("{}/admin/password", self.address))
+            .send()
+            .await
+            .expect("Failed to send GET request to /admin/password")
+    }
+
+    pub async fn get_change_password_html(&self) -> String {
+        self.get_change_password()
+            .await
+            .text()
+            .await
+            .expect("Failed getting change password form.")
     }
 }
 

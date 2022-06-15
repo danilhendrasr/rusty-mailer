@@ -13,6 +13,19 @@
     },
     "query": "\n        INSERT INTO subscription_tokens (subscriber_id, subscription_token) VALUES ($1, $2)\n    "
   },
+  "24ea33795a75c8cf5a55ee719369e1860de7e7e46cddfd4dcb02a4452c9856bf": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Uuid"
+        ]
+      }
+    },
+    "query": "UPDATE users SET password_hash = $1 WHERE id = $2"
+  },
   "3555fc5e85817d9800ce57e96d4b30da4142ec195205d8499070c8e1a14ab424": {
     "describe": {
       "columns": [
@@ -88,6 +101,26 @@
       }
     },
     "query": "SELECT subscriber_id FROM subscription_tokens WHERE subscription_token = $1"
+  },
+  "de3230de507ca1e11d2ca40bef8a5b8470628ddbaa454af4f49f6fe6953f9014": {
+    "describe": {
+      "columns": [
+        {
+          "name": "username",
+          "ordinal": 0,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "SELECT username FROM users WHERE id = $1"
   },
   "f662f52204ac729545aafa231ee19008d7ca139a923e5f7a1e6fece3a4fa8884": {
     "describe": {

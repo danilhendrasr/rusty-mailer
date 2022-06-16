@@ -4,9 +4,8 @@ use secrecy::{ExposeSecret, Secret};
 use sqlx::PgPool;
 
 use crate::{
-    authentication::{self, validate_credentials, AuthError, UserCredentials},
+    authentication::{self, validate_credentials, AuthError, UserCredentials, UserId},
     routes::admin::dashboard::get_username,
-    session_state::TypedSession,
     utils::{e500, see_other},
 };
 
@@ -20,13 +19,9 @@ pub struct FormData {
 pub async fn change_password(
     form_data: web::Form<FormData>,
     db_pool: web::Data<PgPool>,
-    session: TypedSession,
+    user_id: web::ReqData<UserId>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let user_id = session.get_user_id().map_err(e500)?;
-    if user_id.is_none() {
-        return Ok(see_other("/login"));
-    }
-    let user_id = user_id.unwrap();
+    let user_id = user_id.into_inner();
 
     if form_data.new_password.expose_secret() != form_data.new_password_check.expose_secret() {
         FlashMessage::error("New password must match").send();
@@ -39,7 +34,7 @@ pub async fn change_password(
         return Ok(see_other("/admin/password"));
     }
 
-    let username = get_username(user_id, &db_pool).await.map_err(e500)?;
+    let username = get_username(*user_id, &db_pool).await.map_err(e500)?;
 
     let user_credentials = UserCredentials {
         username,
@@ -56,7 +51,7 @@ pub async fn change_password(
         };
     }
 
-    authentication::change_password(user_id, form_data.0.new_password, &db_pool)
+    authentication::change_password(*user_id, form_data.0.new_password, &db_pool)
         .await
         .map_err(e500)?;
 

@@ -7,6 +7,8 @@ use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
 use actix_web_flash_messages::storage::CookieMessageStore;
 use actix_web_flash_messages::FlashMessagesFramework;
+use actix_web_lab::middleware::from_fn;
+use authentication::reject_anonymous_users;
 use email_client::EmailClient;
 use secrecy::{ExposeSecret, Secret};
 use sqlx::PgPool;
@@ -55,13 +57,14 @@ pub async fn run(
             .route("/", web::get().to(routes::home))
             .route("/login", web::get().to(routes::login_form))
             .route("/login", web::post().to(routes::login))
-            .route("/admin/dashboard", web::get().to(routes::admin_dashboard))
-            .route(
-                "/admin/password",
-                web::get().to(routes::change_password_form),
+            .service(
+                web::scope("/admin")
+                    .wrap(from_fn(reject_anonymous_users))
+                    .route("/dashboard", web::get().to(routes::admin_dashboard))
+                    .route("/password", web::get().to(routes::change_password_form))
+                    .route("/password", web::post().to(routes::change_password))
+                    .route("/logout", web::post().to(routes::logout)),
             )
-            .route("/admin/password", web::post().to(routes::change_password))
-            .route("/admin/logout", web::post().to(routes::logout))
             .app_data(db_pool.clone())
             .app_data(email_client.clone())
             .app_data(base_url.clone())

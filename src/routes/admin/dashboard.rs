@@ -1,21 +1,16 @@
-use actix_web::{http::header, web, HttpResponse};
+use actix_web::{web, HttpResponse};
 use anyhow::Context;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::{session_state::TypedSession, utils::e500};
+use crate::{authentication::UserId, utils::e500};
 
 pub async fn admin_dashboard(
-    session: TypedSession,
+    user_id: web::ReqData<UserId>,
     db_pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let user_id = if let Some(user_id) = session.get_user_id().map_err(e500)? {
-        get_username(user_id, &db_pool).await.map_err(e500)?
-    } else {
-        return Ok(HttpResponse::SeeOther()
-            .insert_header((header::LOCATION, "/login"))
-            .finish());
-    };
+    let user_id = user_id.into_inner();
+    let username = get_username(*user_id, &db_pool).await.map_err(e500)?;
 
     Ok(HttpResponse::Ok().body(format!(
         r#"
@@ -39,7 +34,7 @@ pub async fn admin_dashboard(
             </body>
         <html>
     "#,
-        user_id
+        username
     )))
 }
 

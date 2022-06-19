@@ -2,19 +2,20 @@ use actix_web::{
     http,
     http::header,
     http::header::{HeaderMap, HeaderValue},
-    web, HttpRequest, HttpResponse, ResponseError,
+    web, HttpResponse, ResponseError,
 };
+use actix_web_flash_messages::FlashMessage;
 use anyhow::Context;
 use secrecy::Secret;
 use sqlx::PgPool;
 
 use crate::{
-    authentication::{validate_credentials, AuthError, UserCredentials},
+    authentication::{UserCredentials, UserId},
     domains::SubscriberEmail,
     email_client::EmailClient,
+    routes::{admin::dashboard::get_username, error_chain_fmt},
+    utils::see_other,
 };
-
-use super::error_chain_fmt;
 
 #[derive(thiserror::Error)]
 pub enum PublishError {
@@ -55,38 +56,30 @@ impl ResponseError for PublishError {
 #[derive(serde::Deserialize)]
 pub struct BodyData {
     pub title: String,
-    pub content: Content,
-}
-
-#[derive(serde::Deserialize)]
-pub struct Content {
-    pub text: String,
-    pub html: String,
+    pub text_content: String,
+    pub html_content: String,
 }
 
 #[tracing::instrument(
-    "Publishing newsletter", 
-    skip(body, pool, email_client, request),
+    "Publishing newsletter",
+    skip(body, db_pool, email_client),
     fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
 )]
 pub async fn publish_newsletter(
-    body: web::Json<BodyData>,
-    pool: web::Data<PgPool>,
+    body: web::Form<BodyData>,
+    db_pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
-    request: HttpRequest,
+    user_id: web::ReqData<UserId>,
 ) -> actix_web::Result<HttpResponse, PublishError> {
-    let confirmed_subscribers = get_confirmed_subscriber(&pool).await?;
-    let credentials = basic_authentication(request.headers()).map_err(PublishError::AuthError)?;
-
-    tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
-    let user_id = validate_credentials(credentials, &pool)
+    let user_id = user_id.into_inner();
+    let username = get_username(*user_id, &db_pool)
         .await
-        .map_err(|e| match e {
-            AuthError::InvalidCredentials(_) => PublishError::AuthError(e.into()),
-            AuthError::UnexpectedError(_) => PublishError::UnexpectedError(e.into()),
-        })?;
+        .map_err(PublishError::UnexpectedError)?;
+
+    tracing::Span::current().record("username", &tracing::field::display(&username));
     tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
 
+    let confirmed_subscribers = get_confirmed_subscriber(&db_pool).await?;
     for subscriber in confirmed_subscribers {
         match subscriber {
             Ok(confirmed_subscriber) => {
@@ -94,8 +87,8 @@ pub async fn publish_newsletter(
                     .send_email(
                         &confirmed_subscriber.email,
                         &body.title,
-                        &body.content.html,
-                        &body.content.text,
+                        &body.html_content,
+                        &body.text_content,
                     )
                     .await
                     .with_context(|| {
@@ -115,7 +108,8 @@ pub async fn publish_newsletter(
         }
     }
 
-    Ok(HttpResponse::Ok().finish())
+    FlashMessage::info("Success publishing new newsletter issue.").send();
+    Ok(see_other("/admin/newsletters"))
 }
 
 struct ConfirmedSubscriber {

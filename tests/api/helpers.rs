@@ -75,11 +75,13 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
-    pub async fn post_newsletter(&self, body: &serde_json::Value) -> reqwest::Response {
+    pub async fn post_publish_newsletter<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
         self.http_client
-            .post(format!("{}/newsletters", self.address))
-            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
-            .json(body)
+            .post(format!("{}/admin/newsletters", self.address))
+            .form(body)
             .send()
             .await
             .expect("Failed to send reqwest to /newsletters")
@@ -153,6 +155,22 @@ impl TestApp {
             .text()
             .await
             .unwrap()
+    }
+
+    pub async fn get_publish_newsletter(&self) -> reqwest::Response {
+        self.http_client
+            .get(format!("{}/admin/newsletters", &self.address))
+            .send()
+            .await
+            .expect("Failed getting newsletter issue form.")
+    }
+
+    pub async fn get_publish_newsletter_html(&self) -> String {
+        self.get_publish_newsletter()
+            .await
+            .text()
+            .await
+            .expect("Failed getting newsletter issue form.")
     }
 
     pub async fn get_admin_dashboard(&self) -> reqwest::Response {

@@ -24,11 +24,12 @@ pub async fn admin_dashboard(
                 <p>Welcome {}</p>
                 <ol>
                     Available Actions:
+                    <li><a href="/admin/newsletters">Send a newsletter issue</a></li>
                     <li><a href="/admin/password">Change password</a></li>
                     <li>
-                        <form name="logout_form" action="/admin/logout" method="POST">
-                            <input type="submit" value="Logout"/>
-                        </form>
+                    <form name="logout_form" action="/admin/logout" method="POST">
+                    <input type="submit" value="Logout"/>
+                    </form>
                     </li>
                 </ol>
             </body>

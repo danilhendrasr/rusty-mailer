@@ -52,7 +52,6 @@ pub async fn run(
             .wrap(TracingLogger::default())
             .route("/health-check", web::get().to(routes::health_check))
             .route("/subscriptions", web::post().to(routes::subscribe))
-            .route("/newsletters", web::post().to(routes::publish_newsletter))
             .route("/subscriptions/confirm", web::get().to(routes::confirm))
             .route("/", web::get().to(routes::home))
             .route("/login", web::get().to(routes::login_form))
@@ -61,6 +60,11 @@ pub async fn run(
                 web::scope("/admin")
                     .wrap(from_fn(reject_anonymous_users))
                     .route("/dashboard", web::get().to(routes::admin_dashboard))
+                    .route(
+                        "/newsletters",
+                        web::get().to(routes::publish_newsletter_form),
+                    )
+                    .route("/newsletters", web::post().to(routes::publish_newsletter))
                     .route("/password", web::get().to(routes::change_password_form))
                     .route("/password", web::post().to(routes::change_password))
                     .route("/logout", web::post().to(routes::logout)),

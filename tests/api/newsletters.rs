@@ -1,3 +1,4 @@
+use uuid::Uuid;
 use wiremock::{
     matchers::{any, method, path},
     Mock, ResponseTemplate,
@@ -21,7 +22,8 @@ async fn must_be_logged_in_post_new_newsletter_issue() {
     let body = serde_json::json!({
         "title": "Newsletter Title",
         "text_content": "Newsletter body as plain text",
-        "html_content": "<p>Newsletter body as plain text</p>"
+        "html_content": "<p>Newsletter body as plain text</p>",
+        "idempotency_key": Uuid::new_v4().to_string()
     });
 
     let response = app.post_publish_newsletter(&body).await;
@@ -55,7 +57,8 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
     let newsletter_request_body = serde_json::json!({
         "title": "Newsletter Title",
         "text_content": "Newsletter body as plain text",
-        "html_content": "<p>Newsletter body as plain text</p>"
+        "html_content": "<p>Newsletter body as plain text</p>",
+        "idempotency_key": Uuid::new_v4().to_string()
     });
 
     let response = app.post_publish_newsletter(&newsletter_request_body).await;
@@ -96,7 +99,8 @@ async fn newsletters_are_delivered_to_confirmed_subscribers() {
     let newsletter_request_body = serde_json::json!({
         "title": "Newsletter Title",
         "text_content": "Newsletter body as plain text",
-        "html_content": "<p>Newsletter body as plain text</p>"
+        "html_content": "<p>Newsletter body as plain text</p>",
+        "idempotency_key": Uuid::new_v4().to_string()
     });
 
     let response = app.post_publish_newsletter(&newsletter_request_body).await;
@@ -112,24 +116,70 @@ async fn newsletters_are_delivered_to_confirmed_subscribers() {
 }
 
 #[tokio::test]
+async fn newsletter_creation_is_idempotent() {
+    let app = spawn_app().await;
+    create_confirmed_subscriber(&app).await;
+    app.test_user.login(&app).await;
+
+    Mock::given(path("/email"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&app.email_server)
+        .await;
+
+    let newsletter_request_body = serde_json::json!({
+        "title": "Newsletter Title",
+        "text_content": "Newsletter body as plain text",
+        "html_content": "<p>Newsletter body as plain text</p>",
+        "idempotency_key": Uuid::new_v4().to_string(),
+    });
+    let response = app.post_publish_newsletter(&newsletter_request_body).await;
+    assert_eq!(response.status().as_u16(), 303);
+    assert_eq!(
+        response.headers().get("Location").unwrap(),
+        "/admin/newsletters"
+    );
+
+    let publish_newsletter_html = app.get_publish_newsletter_html().await;
+    assert!(publish_newsletter_html.contains("Success publishing new newsletter issue."));
+
+    let response = app.post_publish_newsletter(&newsletter_request_body).await;
+    assert_eq!(response.status().as_u16(), 303);
+    assert_eq!(
+        response.headers().get("Location").unwrap(),
+        "/admin/newsletters"
+    );
+
+    let publish_newsletter_html = app.get_publish_newsletter_html().await;
+    assert!(!publish_newsletter_html.contains("Success publishing new newsletter issue."));
+}
+
+#[tokio::test]
 async fn returns_400_given_invalid_body() {
     let app = spawn_app().await;
+    let idempotency_key = Uuid::new_v4().to_string();
     let test_cases = vec![
         (
             serde_json::json!({
                 "text_content": "Newsletter body as plain text",
-                "html_content": "<p>Newsletter body as plain text</p>"
+                "html_content": "<p>Newsletter body as plain text</p>",
+                "idempotency_key": idempotency_key
             }),
             "missing title",
         ),
         (
-            serde_json::json!({"title": "Newsletter title"}),
+            serde_json::json!({
+                "title": "Newsletter title",
+                "idempotency_key": idempotency_key
+            }),
             "missing content",
         ),
         (
             serde_json::json!({
                 "title": "Newsletter title",
                 "content": "Newsletter body as plain text",
+                "idempotency_key": idempotency_key
             }),
             "malformed content",
         ),

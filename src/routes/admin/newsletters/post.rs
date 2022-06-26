@@ -1,26 +1,20 @@
-use actix_web::{
-    http,
-    http::header,
-    http::header::{HeaderMap, HeaderValue},
-    web, HttpResponse, ResponseError,
-};
+use actix_web::{http, http::header, http::header::HeaderValue, web, HttpResponse, ResponseError};
 use actix_web_flash_messages::FlashMessage;
 use anyhow::Context;
-use secrecy::Secret;
 use sqlx::PgPool;
 
 use crate::{
-    authentication::{UserCredentials, UserId},
-    domains::SubscriberEmail,
+    authentication::UserId,
+    domains::{get_saved_response, save_response, IdempotencyKey, SubscriberEmail},
     email_client::EmailClient,
-    routes::{admin::dashboard::get_username, error_chain_fmt},
-    utils::see_other,
+    routes::error_chain_fmt,
+    utils::{e400, e500, see_other},
 };
 
 #[derive(thiserror::Error)]
 pub enum PublishError {
     #[error("Authentication failed.")]
-    AuthError(#[source] anyhow::Error),
+    _AuthError(#[source] anyhow::Error),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }
@@ -37,7 +31,7 @@ impl ResponseError for PublishError {
             PublishError::UnexpectedError(_) => {
                 HttpResponse::new(http::StatusCode::INTERNAL_SERVER_ERROR)
             }
-            PublishError::AuthError(_) => {
+            PublishError::_AuthError(_) => {
                 let mut response = HttpResponse::new(http::StatusCode::UNAUTHORIZED);
 
                 let header_value_authenticate =
@@ -54,41 +48,50 @@ impl ResponseError for PublishError {
 }
 
 #[derive(serde::Deserialize)]
-pub struct BodyData {
+pub struct FormData {
     pub title: String,
     pub text_content: String,
     pub html_content: String,
+    pub idempotency_key: String,
 }
 
 #[tracing::instrument(
     "Publishing newsletter",
-    skip(body, db_pool, email_client),
-    fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
+    skip(form_data, db_pool, email_client),
+    fields(user_id=%*user_id)
 )]
 pub async fn publish_newsletter(
-    body: web::Form<BodyData>,
+    form_data: web::Form<FormData>,
     db_pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
     user_id: web::ReqData<UserId>,
-) -> actix_web::Result<HttpResponse, PublishError> {
+) -> actix_web::Result<HttpResponse, actix_web::Error> {
     let user_id = user_id.into_inner();
-    let username = get_username(*user_id, &db_pool)
+    let FormData {
+        title,
+        text_content,
+        html_content,
+        idempotency_key,
+    } = form_data.0;
+
+    let idempotency_key: IdempotencyKey = idempotency_key.try_into().map_err(e400)?;
+    if let Some(saved_response) = get_saved_response(*user_id, &idempotency_key, &db_pool)
         .await
-        .map_err(PublishError::UnexpectedError)?;
+        .map_err(e500)?
+    {
+        return Ok(saved_response);
+    }
 
-    tracing::Span::current().record("username", &tracing::field::display(&username));
-    tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
-
-    let confirmed_subscribers = get_confirmed_subscriber(&db_pool).await?;
+    let confirmed_subscribers = get_confirmed_subscriber(&db_pool).await.map_err(e500)?;
     for subscriber in confirmed_subscribers {
         match subscriber {
             Ok(confirmed_subscriber) => {
                 email_client
                     .send_email(
                         &confirmed_subscriber.email,
-                        &body.title,
-                        &body.html_content,
-                        &body.text_content,
+                        &title,
+                        &html_content,
+                        &text_content,
                     )
                     .await
                     .with_context(|| {
@@ -96,7 +99,8 @@ pub async fn publish_newsletter(
                             "Failed sending newsletter to {}",
                             &confirmed_subscriber.email
                         )
-                    })?;
+                    })
+                    .map_err(e500)?;
             }
             Err(error) => {
                 tracing::warn!(
@@ -109,7 +113,12 @@ pub async fn publish_newsletter(
     }
 
     FlashMessage::info("Success publishing new newsletter issue.").send();
-    Ok(see_other("/admin/newsletters"))
+    let response = see_other("/admin/newsletters");
+    let response = save_response(*user_id, &idempotency_key, response, &db_pool)
+        .await
+        .map_err(e500)?;
+
+    Ok(response)
 }
 
 struct ConfirmedSubscriber {
@@ -131,39 +140,4 @@ async fn get_confirmed_subscriber(
         .collect();
 
     Ok(rows)
-}
-
-#[tracing::instrument(name = "Decoding Authorization header.", skip(headers))]
-fn basic_authentication(headers: &HeaderMap) -> Result<UserCredentials, anyhow::Error> {
-    let auth_header_value = headers
-        .get("Authorization")
-        .context("The 'Authorization' header is missing.")?
-        .to_str()
-        .context("The 'Authorization' header is not a valid UTF8 string.")?;
-
-    let auth_base64_str = auth_header_value
-        .strip_prefix("Basic ")
-        .context("The Authorization scheme is not 'Basic '.")?;
-
-    let decoded_base64_bytes = base64::decode(auth_base64_str)
-        .context("Failed decoding the Authorization base64 string.")?;
-
-    let decoded_string = String::from_utf8(decoded_base64_bytes)
-        .context("The credentials is not a valid UTF8 string.")?;
-
-    let mut splitted_string = decoded_string.splitn(2, ':');
-    let username = splitted_string
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("Missing username in the authentication."))?
-        .to_string();
-
-    let password = splitted_string
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("Missing password in the authentication."))?
-        .to_string();
-
-    Ok(UserCredentials {
-        username,
-        password: Secret::new(password),
-    })
 }

@@ -26,7 +26,7 @@
     },
     "query": "UPDATE users SET password_hash = $1 WHERE id = $2"
   },
-  "2ff9c5909dc5569379a2a1b280a85a0b0a825bdf835043e9aabb21388bbb06f9": {
+  "2cf212d2abb73baf9076ddda03f63ba3e37659baa323ebdc6bec940dc55b7f4f": {
     "describe": {
       "columns": [],
       "nullable": [],
@@ -63,7 +63,7 @@
         ]
       }
     },
-    "query": "\n        INSERT INTO idempotency (\n            user_id,\n            idempotency_key,\n            response_status_code,\n            response_headers,\n            response_body,\n            created_at\n        )\n        VALUES ($1, $2, $3, $4, $5, now())\n    "
+    "query": "\n        UPDATE idempotency\n        SET\n            response_status_code = $3,\n            response_headers = $4,\n            response_body = $5\n        WHERE\n            user_id = $1 AND idempotency_key = $2\n    "
   },
   "3555fc5e85817d9800ce57e96d4b30da4142ec195205d8499070c8e1a14ab424": {
     "describe": {
@@ -91,6 +91,62 @@
     },
     "query": "SELECT id, password_hash FROM users WHERE username = $1"
   },
+  "91bdb88cd930dcf6bb5ace4a306532c5869da64c73e0276b809af6715e427f22": {
+    "describe": {
+      "columns": [
+        {
+          "name": "response_status_code!",
+          "ordinal": 0,
+          "type_info": "Int2"
+        },
+        {
+          "name": "header_pairs!: Vec<HeaderPairRecord>",
+          "ordinal": 1,
+          "type_info": {
+            "Custom": {
+              "kind": {
+                "Array": {
+                  "Custom": {
+                    "kind": {
+                      "Composite": [
+                        [
+                          "name",
+                          "Text"
+                        ],
+                        [
+                          "value",
+                          "Bytea"
+                        ]
+                      ]
+                    },
+                    "name": "header_pair"
+                  }
+                }
+              },
+              "name": "_header_pair"
+            }
+          }
+        },
+        {
+          "name": "response_body!",
+          "ordinal": 2,
+          "type_info": "Bytea"
+        }
+      ],
+      "nullable": [
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Text"
+        ]
+      }
+    },
+    "query": "SELECT\n            response_status_code as \"response_status_code!\",\n            response_headers as \"header_pairs!: Vec<HeaderPairRecord>\",\n            response_body as \"response_body!\"\n          FROM idempotency\n          WHERE user_id = $1 AND idempotency_key = $2"
+  },
   "92d1430cbd64c1424560b061cb2cb395369617b1e72bc6e86e7f1cd987748491": {
     "describe": {
       "columns": [
@@ -108,6 +164,19 @@
       }
     },
     "query": "SELECT email FROM subscriptions WHERE status = 'confirmed'"
+  },
+  "a1959297b303168891059e4bfe2cd381a714c63c5c4d46cd3cfc129974401376": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        INSERT INTO idempotency (\n            user_id,\n            idempotency_key,\n            created_at\n        )\n        VALUES ($1, $2, now())\n        ON CONFLICT DO NOTHING\n    "
   },
   "a71a1932b894572106460ca2e34a63dc0cb8c1ba7a70547add1cddbb68133c2b": {
     "describe": {
@@ -140,62 +209,6 @@
       }
     },
     "query": "SELECT subscriber_id FROM subscription_tokens WHERE subscription_token = $1"
-  },
-  "d66fce4960693493da9d4b23607c2a4242d10d956c275cd566da9d46d9ac75dc": {
-    "describe": {
-      "columns": [
-        {
-          "name": "response_status_code",
-          "ordinal": 0,
-          "type_info": "Int2"
-        },
-        {
-          "name": "header_pairs: Vec<HeaderPairRecord>",
-          "ordinal": 1,
-          "type_info": {
-            "Custom": {
-              "kind": {
-                "Array": {
-                  "Custom": {
-                    "kind": {
-                      "Composite": [
-                        [
-                          "name",
-                          "Text"
-                        ],
-                        [
-                          "value",
-                          "Bytea"
-                        ]
-                      ]
-                    },
-                    "name": "header_pair"
-                  }
-                }
-              },
-              "name": "_header_pair"
-            }
-          }
-        },
-        {
-          "name": "response_body",
-          "ordinal": 2,
-          "type_info": "Bytea"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Uuid",
-          "Text"
-        ]
-      }
-    },
-    "query": "SELECT\n            response_status_code,\n            response_headers as \"header_pairs: Vec<HeaderPairRecord>\",\n            response_body\n          FROM idempotency\n          WHERE user_id = $1 AND idempotency_key = $2"
   },
   "de3230de507ca1e11d2ca40bef8a5b8470628ddbaa454af4f49f6fe6953f9014": {
     "describe": {

@@ -5,7 +5,7 @@ use sqlx::PgPool;
 
 use crate::{
     authentication::UserId,
-    domains::{get_saved_response, save_response, IdempotencyKey, SubscriberEmail},
+    domains::{save_response, try_processing, IdempotencyKey, NextAction, SubscriberEmail},
     email_client::EmailClient,
     routes::error_chain_fmt,
     utils::{e400, e500, see_other},
@@ -75,12 +75,16 @@ pub async fn publish_newsletter(
     } = form_data.0;
 
     let idempotency_key: IdempotencyKey = idempotency_key.try_into().map_err(e400)?;
-    if let Some(saved_response) = get_saved_response(*user_id, &idempotency_key, &db_pool)
+    let transaction = match try_processing(*user_id, &idempotency_key, &db_pool)
         .await
         .map_err(e500)?
     {
-        return Ok(saved_response);
-    }
+        NextAction::StartProcessing(transaction) => transaction,
+        NextAction::ReturnSavedResponse(saved_response) => {
+            success_message().send();
+            return Ok(saved_response);
+        }
+    };
 
     let confirmed_subscribers = get_confirmed_subscriber(&db_pool).await.map_err(e500)?;
     for subscriber in confirmed_subscribers {
@@ -112,9 +116,9 @@ pub async fn publish_newsletter(
         }
     }
 
-    FlashMessage::info("Success publishing new newsletter issue.").send();
+    success_message().send();
     let response = see_other("/admin/newsletters");
-    let response = save_response(*user_id, &idempotency_key, response, &db_pool)
+    let response = save_response(*user_id, &idempotency_key, response, transaction)
         .await
         .map_err(e500)?;
 
@@ -140,4 +144,8 @@ async fn get_confirmed_subscriber(
         .collect();
 
     Ok(rows)
+}
+
+fn success_message() -> FlashMessage {
+    FlashMessage::info("Success publishing new newsletter issue.")
 }

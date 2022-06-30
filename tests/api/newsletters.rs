@@ -1,5 +1,9 @@
 use std::time::Duration;
 
+use fake::{
+    faker::{internet::en::SafeEmail, name::en::Name},
+    Fake,
+};
 use uuid::Uuid;
 use wiremock::{
     matchers::{any, method, path},
@@ -71,7 +75,10 @@ async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
     );
 
     let publish_newsletter_html = app.get_publish_newsletter_html().await;
-    assert!(publish_newsletter_html.contains("Success publishing new newsletter issue."));
+    assert!(publish_newsletter_html
+        .contains("The newsletter issue has been accepted, emails will go out shortly."));
+
+    app.dispatch_all_pending_emails().await;
 }
 
 #[tokio::test]
@@ -114,7 +121,10 @@ async fn newsletters_are_delivered_to_confirmed_subscribers() {
     );
 
     let publish_newsletter_html = app.get_publish_newsletter_html().await;
-    assert!(publish_newsletter_html.contains("Success publishing new newsletter issue."));
+    assert!(publish_newsletter_html
+        .contains("The newsletter issue has been accepted, emails will go out shortly."));
+
+    app.dispatch_all_pending_emails().await;
 }
 
 #[tokio::test]
@@ -144,7 +154,8 @@ async fn newsletter_creation_is_idempotent() {
     );
 
     let publish_newsletter_html = app.get_publish_newsletter_html().await;
-    assert!(publish_newsletter_html.contains("Success publishing new newsletter issue."));
+    assert!(publish_newsletter_html
+        .contains("The newsletter issue has been accepted, emails will go out shortly."));
 
     let response = app.post_publish_newsletter(&newsletter_request_body).await;
     assert_eq!(response.status().as_u16(), 303);
@@ -154,7 +165,10 @@ async fn newsletter_creation_is_idempotent() {
     );
 
     let publish_newsletter_html = app.get_publish_newsletter_html().await;
-    assert!(publish_newsletter_html.contains("Success publishing new newsletter issue."));
+    assert!(publish_newsletter_html
+        .contains("The newsletter issue has been accepted, emails will go out shortly."));
+
+    app.dispatch_all_pending_emails().await;
 }
 
 #[tokio::test]
@@ -186,6 +200,8 @@ async fn concurrent_form_submission_is_handled_gracefully() {
         response1.text().await.unwrap(),
         response2.text().await.unwrap()
     );
+
+    app.dispatch_all_pending_emails().await;
 }
 
 #[tokio::test]
@@ -243,7 +259,14 @@ async fn returns_400_given_invalid_body() {
 }
 
 async fn create_unconfirmed_subscriber(app: &TestApp) -> ConfirmationLink {
-    let body = "name=danil%20hendra&email=danilhendrasr%40gmail.com";
+    let name = Name().fake::<String>();
+    let email = SafeEmail().fake::<String>();
+    let body = serde_urlencoded::to_string(serde_json::json!({
+        "name": name,
+        "email": email,
+    }))
+    .unwrap();
+
     let _mock_guard = Mock::given(path("/email"))
         .and(method("POST"))
         .respond_with(ResponseTemplate::new(200))

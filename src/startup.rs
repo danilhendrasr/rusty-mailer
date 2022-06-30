@@ -6,7 +6,6 @@ use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 use crate::{
     configuration::{DBSettings, Settings},
-    email_client::EmailClient,
     run,
 };
 use std::time::Duration;
@@ -34,21 +33,7 @@ impl Application {
     pub async fn build(configuration: Settings) -> Result<Self, anyhow::Error> {
         let db_pool = get_connection_pool(&configuration.database);
 
-        // Setup email client, we're using singleton to utilize reqwest's HTTP connection pooling
-        let email_client_sender_email = configuration
-            .email_client
-            .sender()
-            .expect("Invalid sender email address for email client.");
-
-        let email_client_timeout_duration = configuration.email_client.timeout();
-
-        let email_client = EmailClient::new(
-            configuration.email_client.base_url,
-            email_client_sender_email,
-            configuration.email_client.authorization_token,
-            email_client_timeout_duration,
-        );
-
+        let email_client = configuration.email_client.client();
         let address = format!(
             "{}:{}",
             configuration.application.host, configuration.application.port

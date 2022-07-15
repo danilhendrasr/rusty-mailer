@@ -140,7 +140,7 @@ Much thanks to these people/organizations/resources that made this project possi
 [issues-shield]: https://img.shields.io/github/issues/danilhendrasr/rusty-mailer.svg?style=for-the-badge
 [issues-url]: https://github.com/danilhendrasr/rusty-mailer/issues
 [license-shield]: https://img.shields.io/github/license/danilhendrasr/rusty-mailer.svg?style=for-the-badge
-[license-url]: https://github.com/danilhendrasr/rusty-mailer/blob/master/LICENSE
+[license-url]: https://github.com/danilhendrasr/rusty-mailer/blob/main/LICENSE
 
 [twitter-shield]: https://img.shields.io/badge/Twitter-1DA1F2.svg?style=for-the-badge&logo=twitter&logoColor=white
 [twitter-url]: https://twitter.com/danilhendrasr

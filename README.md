@@ -49,9 +49,71 @@
 
 <!-- ABOUT THE PROJECT -->
 ## About The Project
-_To be updated..._
 
-<p align="right">(<a href="#top">back to top</a>)</p>
+Rusty Mailer is a practice project using Rust, it's a simple email newsletter delivery 
+service where users can publish newsletter issues to their subscribers. 
+It features some degree of fault-tolerance and well-tested codebase. Built using Rust 
+and Actix Web, it was a project from the book [Zero to Production in Rust](https://zero2prod.com).
+
+To achieve fault-tolerance, email newsletter deliveries are done asynchronously by 
+queueing the delivery in the database, then background workers will dequeue it periodically. 
+
+The following is the diagram:
+```mermaid
+sequenceDiagram
+    participant User
+    participant Rusty Mailer
+    participant Database
+    participant Background Worker 1
+    participant Background Worker 2
+    participant Postmark
+    
+    User->>+Rusty Mailer: Publish new newsletter issue
+    Rusty Mailer-)Database: Queue the newsletter deliveries
+    Rusty Mailer->>-User: "Success, newsletters will go out shortly"
+    loop Email Newsletter Delivery
+      par
+        Background Worker 1->>Database: Dequeue
+        Background Worker 1->>Postmark: Send email newsletter
+      and
+        Background Worker 2->>Database: Dequeue
+        Background Worker 2->>Postmark: Send email newsletter
+      end
+    end
+```
+
+PostgreSQL table is utilized as the queue, background workers will pick 1 row to process everytime it does 
+dequeue operation and then delete the row immediately after it succeeded processing.
+PostgreSQL's [row-level locking](https://www.postgresql.org/docs/current/explicit-locking.html) 
+is utilized to prevent multiple background workers from processing the same row, 
+thus preventing duplicate email delivery.
+
+The following diagram illustrates what would happen when there are 2 rows (row A and row B) in the table 
+and two workers do dequeue operation concurrently:
+```mermaid
+sequenceDiagram
+    participant Worker 1
+    participant Worker 2
+    participant Database
+    
+    par Worker 1 tries to process row A
+      rect rgb(180, 150, 50)
+        alt Row A is not locked
+          Worker 1->>Database: Processes row A
+        else Row A is locked
+          Worker 1->>Database: Processes row B
+        end
+      end
+    and Worker 2 tries to process row A
+      rect rgb(50, 50, 50)
+        alt Row A is not locked
+          Worker 2->>Database: Processes row A
+        else Row A is locked
+          Worker 2->>Database: Processes row B
+        end
+      end
+    end
+```
 
 
 ### Built With
@@ -82,15 +144,6 @@ _To be updated..._
 See the [open issues][issues-url] for a full list of proposed features (and known issues).
 
 <p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-<!-- CONTRIBUTING -->
-## Contributing
-_To be updated..._
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
 
 
 <!-- LICENSE -->

@@ -130,7 +130,21 @@ sequenceDiagram
 
 <!-- GETTING STARTED -->
 ## Getting Started
-_To be updated..._
+### Prerequisites
+- Docker;
+- Rust;
+- SQLX-cli, install using `cargo install sqlx-cli`;
+- PostgreSQL.
+
+### Running Locally
+1. Clone the repo and `cd` into the directory;
+2. Run the following command:
+```bash
+scripts/init_db.sh && scripts/init_redis.sh
+```
+3. Run `cargo run`
+4. The web can be accessed at [localhost:8081](http://localhost:8081);
+5. Go to `localhost:8081/login` to login, use "admin" for username, and "everythinghastostartsomewhere" for the password.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -139,7 +153,8 @@ _To be updated..._
 
 - [ ] Deploy to a cloud provider
 - [ ] Create automated deployment pipeline
-- [ ] API docs (Swagger
+- [ ] API docs (Swagger)
+- [ ] Revamp UI
 
 See the [open issues][issues-url] for a full list of proposed features (and known issues).
 
